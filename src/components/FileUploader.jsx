@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from "react";
 import Papa from "papaparse";
 import { Upload, FileSpreadsheet, AlertCircle, Database, Check, X, ChevronRight } from "lucide-react";
-import { validateHeaders, SAMPLE_DATA } from "../utils/simulation";
+import { validateHeaders, SAMPLE_DATA, COLUMN_ALIASES } from "../utils/simulation";
 
 export default function FileUploader({ onDataLoaded, onSampleLoaded }) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -49,41 +49,64 @@ export default function FileUploader({ onDataLoaded, onSampleLoaded }) {
       setIsLoading(false);
     }, 10000);
 
-    // Simulate 600ms load delay to represent parsing overhead & show loading state
+    // Simulate 400ms load delay to show loading state
     setTimeout(() => {
       console.log("Starting CSV parsing with PapaParse");
       Papa.parse(file, {
         header: true,
-        skipEmptyLines: true,
-        worker: true, // Enable worker mode for large files
+        skipEmptyLines: "greedy",
+        dynamicTyping: false,
+        transformHeader: (header) => (header ? header.trim().replace(/^[\uFEFF\xA0]+/, "") : ""),
         complete: (results) => {
           clearTimeout(timeoutId);
           console.log("CSV parsing completed", results);
-          const headers = results.meta.fields || [];
-          console.log("Headers found:", headers);
-          
+
+          let data = results.data || [];
+          let headers = results.meta.fields || [];
+
+          // Clean up headers: flatten arrays or extract strings
+          headers = headers
+            .filter(h => h != null)
+            .map(h => (Array.isArray(h) ? h.join(" ").trim() : String(h).trim()));
+
+          // If rows came back as arrays (misconfigured header detection or raw rows)
+          if (data.length > 0 && Array.isArray(data[0])) {
+            if (headers.length === 0 || headers.length !== data[0].length) {
+              headers = data[0].map(h => String(h || "").trim());
+              data = data.slice(1);
+            }
+            data = data.map(row => {
+              const rowObj = {};
+              headers.forEach((colName, idx) => {
+                rowObj[colName] = row[idx];
+              });
+              return rowObj;
+            });
+          }
+
+          console.log("Normalized headers found:", headers);
+
           if (!validateHeaders(headers)) {
             console.log("Validation failed - missing required headers");
             setError(
-              "Schema mismatch. Required headers: 'Product Name', 'Quantity', 'Month', 'Year'."
+              "Schema mismatch. Required headers: 'Product Name', 'Quantity', 'Month', 'Year' (or common aliases like Product, Qty, etc.)."
             );
             setIsLoading(false);
             return;
           }
 
-          if (results.data.length === 0) {
+          if (data.length === 0) {
             console.log("Validation failed - no data records");
             setError("The uploaded CSV document contains no data records.");
             setIsLoading(false);
             return;
           }
 
-          console.log("Validation completed, setting preview data");
+          console.log("Validation completed, setting preview data for", data.length, "rows");
           setSuccess(true);
           setIsLoading(false);
-          setPreviewData(results.data);
+          setPreviewData(data);
           setDataSource("CSV Upload");
-          console.log("Opening dashboard preview");
         },
         error: (err) => {
           clearTimeout(timeoutId);
@@ -92,7 +115,7 @@ export default function FileUploader({ onDataLoaded, onSampleLoaded }) {
           setIsLoading(false);
         },
       });
-    }, 600);
+    }, 400);
   };
 
   const handleDrop = (e) => {
@@ -138,18 +161,19 @@ export default function FileUploader({ onDataLoaded, onSampleLoaded }) {
 
   const handleCellEdit = (rowIndex, field, value) => {
     const updatedData = [...previewData];
-    // Find the actual key name in the row object (case-insensitive)
     const row = updatedData[rowIndex];
-    const lowerField = field.toLowerCase();
+    const aliases = (COLUMN_ALIASES && COLUMN_ALIASES[field]) || [field.toLowerCase()];
     let actualKey = null;
     for (const key in row) {
-      if (key.toLowerCase() === lowerField) {
+      if (aliases.includes(key.toLowerCase())) {
         actualKey = key;
         break;
       }
     }
     if (actualKey) {
       updatedData[rowIndex][actualKey] = value;
+    } else {
+      updatedData[rowIndex][field] = value;
     }
     setPreviewData(updatedData);
   };
@@ -162,12 +186,14 @@ export default function FileUploader({ onDataLoaded, onSampleLoaded }) {
     setEditingCell(null);
   };
 
-  // Helper function to get value from row with case-insensitive key matching
+  // Helper function to get value from row with alias & case-insensitive matching
   const getRowValue = (row, keyName) => {
-    const lowerKey = keyName.toLowerCase();
+    if (!row || typeof row !== "object") return "";
+    const aliases = (COLUMN_ALIASES && COLUMN_ALIASES[keyName]) || [keyName.toLowerCase()];
     for (const key in row) {
-      if (key.toLowerCase() === lowerKey) {
-        return row[key];
+      const cleanKey = key.trim().toLowerCase();
+      if (aliases.includes(cleanKey)) {
+        return row[key] !== undefined && row[key] !== null ? row[key] : "";
       }
     }
     return "";

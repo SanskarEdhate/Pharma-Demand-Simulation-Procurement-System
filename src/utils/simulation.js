@@ -30,9 +30,21 @@ export const SIMULATION_DATE = new Date(Date.UTC(2021, 0, 1));
 export const EXPIRY_THRESHOLD_DAYS = 120;
 export const REQUIRED_COLUMNS = ["Product Name", "Quantity", "Month", "Year"];
 
+export const COLUMN_ALIASES = {
+  "Product Name": ["product name", "product_name", "product", "item", "item name", "item_name", "drug", "medicine", "formulation", "sku", "name", "brand", "medicine name"],
+  "Quantity": ["quantity", "qty", "quantity sold", "units", "units sold", "volume", "sales", "count", "amount", "sold"],
+  "Month": ["month", "month name", "sales month", "mo", "period", "mnth"],
+  "Year": ["year", "sales year", "yr"]
+};
+
 const MONTH_NAMES = [
   "january", "february", "march", "april", "may", "june",
   "july", "august", "september", "october", "november", "december"
+];
+
+const MONTH_ABBR = [
+  "jan", "feb", "mar", "apr", "may", "jun",
+  "jul", "aug", "sep", "oct", "nov", "dec"
 ];
 
 // Helper to format dates as YYYY-MM-DD
@@ -44,8 +56,7 @@ export function formatDate(date) {
 }
 
 /**
- * Validates whether the CSV headers contain all required columns.
- * Normalizes headers by trimming spaces and converting to lowercase.
+ * Validates whether the CSV headers contain all required columns or recognized aliases.
  * @param {Array<string>} headers 
  * @returns {boolean}
  */
@@ -55,20 +66,20 @@ export function validateHeaders(headers) {
     return false;
   }
   
-  const cleanHeaders = headers.map(h => {
-    // Handle non-string values
-    if (typeof h !== 'string') {
-      console.warn("Header is not a string:", h, typeof h);
-      return String(h || '').trim().toLowerCase();
-    }
-    return h.trim().toLowerCase();
-  });
+  const cleanHeaders = headers
+    .filter(h => h != null)
+    .map(h => (typeof h === 'string' ? h.trim().toLowerCase() : String(h || '').trim().toLowerCase()));
   
-  const requiredLower = REQUIRED_COLUMNS.map(col => col.toLowerCase());
-  console.log("Validating headers:", cleanHeaders, "against required:", requiredLower);
-  const isValid = requiredLower.every(col => cleanHeaders.includes(col));
-  console.log("Validation result:", isValid);
-  return isValid;
+  const missing = REQUIRED_COLUMNS.filter(col => {
+    const aliases = COLUMN_ALIASES[col] || [col.toLowerCase()];
+    return !cleanHeaders.some(h => aliases.includes(h));
+  });
+
+  if (missing.length > 0) {
+    console.warn("Validation failed - missing required headers:", missing, "available headers:", cleanHeaders);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -112,7 +123,7 @@ export function runSimulation(rawData, customSimulationDateStr = "2021-01-01") {
       return;
     }
     
-    // Find keys matching required columns (case-insensitive)
+    // Find keys matching required columns or aliases (case-insensitive)
     let prodName = "";
     let quantityVal = NaN;
     let monthStr = "";
@@ -121,10 +132,17 @@ export function runSimulation(rawData, customSimulationDateStr = "2021-01-01") {
     Object.keys(row).forEach(key => {
       const k = key.trim().toLowerCase();
       const val = row[key];
-      if (k === "product name") prodName = String(val).trim();
-      else if (k === "quantity") quantityVal = parseFloat(val);
-      else if (k === "month") monthStr = String(val).trim();
-      else if (k === "year") yearVal = parseInt(val, 10);
+      if (val === undefined || val === null || val === "") return;
+
+      if (!prodName && COLUMN_ALIASES["Product Name"].includes(k)) {
+        prodName = String(val).trim();
+      } else if (isNaN(quantityVal) && COLUMN_ALIASES["Quantity"].includes(k)) {
+        quantityVal = parseFloat(String(val).replace(/,/g, ""));
+      } else if (!monthStr && COLUMN_ALIASES["Month"].includes(k)) {
+        monthStr = String(val).trim();
+      } else if (isNaN(yearVal) && COLUMN_ALIASES["Year"].includes(k)) {
+        yearVal = parseInt(val, 10);
+      }
     });
 
     if (!prodName || isNaN(quantityVal) || !monthStr || isNaN(yearVal)) {
@@ -136,9 +154,18 @@ export function runSimulation(rawData, customSimulationDateStr = "2021-01-01") {
       return; // Skip negative quantities
     }
 
-    // Date parsing - make case-insensitive
+    // Date parsing - support full name, abbreviation, or numeric month (1-12)
     const cleanMonth = monthStr.toLowerCase();
-    const monthIdx = MONTH_NAMES.indexOf(cleanMonth);
+    let monthIdx = MONTH_NAMES.indexOf(cleanMonth);
+    if (monthIdx === -1) {
+      monthIdx = MONTH_ABBR.indexOf(cleanMonth.slice(0, 3));
+    }
+    if (monthIdx === -1 && !isNaN(parseInt(cleanMonth, 10))) {
+      const numMonth = parseInt(cleanMonth, 10);
+      if (numMonth >= 1 && numMonth <= 12) {
+        monthIdx = numMonth - 1;
+      }
+    }
     if (monthIdx === -1) {
       console.warn(`Invalid month string: "${monthStr}" (cleaned: "${cleanMonth}")`);
       return; // Skip invalid month strings
