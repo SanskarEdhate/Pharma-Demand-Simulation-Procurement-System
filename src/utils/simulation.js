@@ -254,15 +254,18 @@ export function runSimulation(rawData, customSimulationDateStr = "2021-01-01") {
     predictedDemand = Math.max(predictedDemand, 0.0);
 
     // Warehouse simulation (deterministic drawing matching order of products)
+    const lastDataDateStr = sortedDates[sortedDates.length - 1];
+    const lastDataDate = new Date(lastDataDateStr);
+
     const riskyPct = rng.uniform(0.10, 0.50);
     const riskyStockAmt = avgMonthlySales * riskyPct;
     const riskyExpiryDays = rng.integer(30, 151); // 30 to 150 inclusive
-    const riskyExpiryDate = new Date(simDate.getTime() + riskyExpiryDays * 24 * 60 * 60 * 1000);
+    const riskyExpiryDate = new Date(lastDataDate.getTime() + riskyExpiryDays * 24 * 60 * 60 * 1000);
 
     const freshPct = rng.uniform(0.50, 2.50);
     const freshStockAmt = avgMonthlySales * freshPct;
     const freshExpiryDays = rng.integer(300, 701); // 300 to 700 inclusive
-    const freshExpiryDate = new Date(simDate.getTime() + freshExpiryDays * 24 * 60 * 60 * 1000);
+    const freshExpiryDate = new Date(lastDataDate.getTime() + freshExpiryDays * 24 * 60 * 60 * 1000);
 
     const leadTime = rng.integer(5, 15); // 5 to 14 inclusive
 
@@ -285,22 +288,31 @@ export function runSimulation(rawData, customSimulationDateStr = "2021-01-01") {
     const daysBetweenOrders = ordersPerYear > 0 ? 365 / ordersPerYear : 0;
     const annualCostSavings = eoq * 0.10;
 
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    const riskyDaysToExpiry = (riskyExpiryDate.getTime() - simDate.getTime()) / MS_PER_DAY;
+    const freshDaysToExpiry = (freshExpiryDate.getTime() - simDate.getTime()) / MS_PER_DAY;
+
     let usableStock = 0.0;
     let riskyStockTotal = 0.0;
+    let expiredStockTotal = 0.0;
 
-    if (riskyExpiryDays > EXPIRY_THRESHOLD_DAYS) {
-      usableStock += riskyStockAmt;
-    } else {
+    if (riskyDaysToExpiry < 0) {
+      expiredStockTotal += riskyStockAmt;
+    } else if (riskyDaysToExpiry <= EXPIRY_THRESHOLD_DAYS) {
       riskyStockTotal += riskyStockAmt;
-    }
-
-    if (freshExpiryDays > EXPIRY_THRESHOLD_DAYS) {
-      usableStock += freshStockAmt;
     } else {
-      riskyStockTotal += freshStockAmt;
+      usableStock += riskyStockAmt;
     }
 
-    const totalStock = usableStock + riskyStockTotal;
+    if (freshDaysToExpiry < 0) {
+      expiredStockTotal += freshStockAmt;
+    } else if (freshDaysToExpiry <= EXPIRY_THRESHOLD_DAYS) {
+      riskyStockTotal += freshStockAmt;
+    } else {
+      usableStock += freshStockAmt;
+    }
+
+    const totalStock = usableStock + riskyStockTotal + expiredStockTotal;
     const safetyStock = 0.20 * predictedDemand;
     const reorderPoint = (predictedDemand / 30.0 * leadTime) + safetyStock;
 
@@ -315,7 +327,8 @@ export function runSimulation(rawData, customSimulationDateStr = "2021-01-01") {
       unitsToBuy = 0.0;
     }
 
-    const nearestExpiryDate = riskyExpiryDays < freshExpiryDays ? riskyExpiryDate : freshExpiryDate;
+    const nearestExpiryDate = riskyExpiryDate < freshExpiryDate ? riskyExpiryDate : freshExpiryDate;
+    const nearestExpiryIsPast = nearestExpiryDate.getTime() < simDate.getTime();
 
     records.push({
       "Product Name": product,
@@ -324,10 +337,12 @@ export function runSimulation(rawData, customSimulationDateStr = "2021-01-01") {
       "Lead Time (Days)": leadTime,
       "Usable Stock": Math.round(usableStock * 100) / 100,
       "Risky Stock (Near Expiry)": Math.round(riskyStockTotal * 100) / 100,
+      "Expired Stock": Math.round(expiredStockTotal * 100) / 100,
       "Total Stock": Math.round(totalStock * 100) / 100,
       "Safety Stock": Math.round(safetyStock * 100) / 100,
       "Reorder Point (ROP)": Math.round(reorderPoint * 100) / 100,
       "Nearest Expiry Date": formatDate(nearestExpiryDate),
+      "Nearest Expiry Is Past": nearestExpiryIsPast,
       "Action": action,
       "Units to Buy": Math.round(unitsToBuy),
       "Purchase Cost": Math.round(purchaseCost * 100) / 100,

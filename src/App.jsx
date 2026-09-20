@@ -9,7 +9,13 @@ import { Pill, RefreshCw, ChevronRight } from "lucide-react";
 
 export default function App() {
   const [rawUploadedData, setRawUploadedData] = useState(null);
-  const [simDate, setSimDate] = useState("2021-01-01");
+  const [simDate, setSimDate] = useState(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  });
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Compute simulation data dynamically

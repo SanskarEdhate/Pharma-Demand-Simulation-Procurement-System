@@ -6,7 +6,11 @@ export default function KPICards({ data }) {
   const totalItems = data.length;
   const restockItems = data.filter((item) => item.Action.includes("RESTOCK")).length;
   const excessiveItems = data.filter((item) => item.Action.includes("EXCESSIVE")).length;
-  const expiryHazardItems = data.filter((item) => item["Risky Stock (Near Expiry)"] > 0).length;
+  const expiredItems = data.filter((item) => (item["Expired Stock"] || 0) > 0).length;
+  const riskyItems = data.filter((item) => (item["Risky Stock (Near Expiry)"] || 0) > 0).length;
+  const expiryHazardItems = data.filter(
+    (item) => (item["Risky Stock (Near Expiry)"] || 0) > 0 || (item["Expired Stock"] || 0) > 0
+  ).length;
 
   const cards = [
     {
@@ -35,8 +39,8 @@ export default function KPICards({ data }) {
       title: "Short-Dated Expirations",
       value: expiryHazardItems,
       total: totalItems,
-      label: "Expiry Risk (≤120d)",
-      desc: `${Math.round((expiryHazardItems / (totalItems || 1)) * 100)}% of items contain near-expiry lots`,
+      label: "Expiry Risk (≤120d / Expired)",
+      desc: `${expiredItems} expired · ${riskyItems} near-expiry`,
       icon: CalendarDays,
       textColor: "text-orange-400",
       indicatorColor: "bg-orange-500",

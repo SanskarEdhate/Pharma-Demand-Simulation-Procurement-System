@@ -30,7 +30,7 @@ export default function DashboardTabs({ data }) {
         console.log("Overstock filter result:", filtered.length, "items");
         return filtered;
       case "expiry":
-        filtered = data.filter((item) => item["Risky Stock (Near Expiry)"] > 0);
+        filtered = data.filter((item) => (item["Risky Stock (Near Expiry)"] || 0) > 0 || (item["Expired Stock"] || 0) > 0);
         console.log("Expiry filter result:", filtered.length, "items");
         return filtered;
       case "profitability":
@@ -230,6 +230,11 @@ export default function DashboardTabs({ data }) {
         >
           <ShieldAlert className="w-3.5 h-3.5" />
           Expiry Risk
+          {data.filter((item) => (item["Risky Stock (Near Expiry)"] || 0) > 0 || (item["Expired Stock"] || 0) > 0).length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-sm text-xs font-body bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              {data.filter((item) => (item["Risky Stock (Near Expiry)"] || 0) > 0 || (item["Expired Stock"] || 0) > 0).length}
+            </span>
+          )}
         </button>
 
         <button
@@ -470,6 +475,9 @@ export default function DashboardTabs({ data }) {
                   <th className="py-3.5 px-5 cursor-pointer hover:text-ink text-right font-bold text-amber-400" onClick={() => requestSort("Risky Stock (Near Expiry)")}>
                     <div className="flex items-center justify-end gap-1 text-amber-400">Risky Stock (Near Expiry) <ArrowUpDown className="w-3 h-3 text-amber-500/60" /></div>
                   </th>
+                  <th className="py-3.5 px-5 cursor-pointer hover:text-ink text-right font-bold text-rose-400" onClick={() => requestSort("Expired Stock")}>
+                    <div className="flex items-center justify-end gap-1 text-rose-400">Expired Stock <ArrowUpDown className="w-3 h-3 text-rose-500/60" /></div>
+                  </th>
                   <th className="py-3.5 px-5 cursor-pointer hover:text-ink text-right" onClick={() => requestSort("Total Stock")}>
                     <div className="flex items-center justify-end gap-1">Total Stock <ArrowUpDown className="w-3 h-3 text-ink-2/60" /></div>
                   </th>
@@ -621,12 +629,22 @@ export default function DashboardTabs({ data }) {
                           {item["Product Name"]}
                         </td>
                         <td className="py-3.5 px-5 text-right tnum text-ink-2">{item["Usable Stock"]}</td>
-                        <td className="py-3.5 px-5 text-right tnum font-bold text-rose-400 bg-rose-500/5">
+                        <td className="py-3.5 px-5 text-right tnum font-bold text-amber-400 bg-amber-500/5">
                           {item["Risky Stock (Near Expiry)"]}
+                        </td>
+                        <td className="py-3.5 px-5 text-right tnum font-bold text-rose-400 bg-rose-500/5">
+                          {item["Expired Stock"] ?? 0}
                         </td>
                         <td className="py-3.5 px-5 text-right tnum text-ink-2">{item["Total Stock"]}</td>
                         <td className="py-3.5 px-5 text-center tnum text-rose-400/90 font-medium">
-                          {item["Nearest Expiry Date"]}
+                          <span className="inline-flex items-center justify-center gap-1.5">
+                            {item["Nearest Expiry Date"]}
+                            {item["Nearest Expiry Is Past"] && (
+                              <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                                (EXPIRED)
+                              </span>
+                            )}
+                          </span>
                         </td>
                       </>
                     )}
