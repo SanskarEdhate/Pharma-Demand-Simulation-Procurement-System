@@ -1,6 +1,6 @@
 # Pharma Demand Simulation & Procurement Engine
 
-A pharmaceutical inventory management and procurement decision support system built with React, Vite, Tailwind CSS, and Recharts. This application models batch safety stocks, evaluates Economic Order Quantities (EOQ), and simulates pharmaceutical replenishment metrics using historical sales ledgers with First-Expire-First-Out (FEFO) logic.
+A pharmaceutical inventory management and procurement decision support system built with React, Vite, Tailwind CSS, and Recharts. This application models batch safety stocks, evaluates Economic Order Quantities (EOQ), and simulates pharmaceutical replenishment metrics using historical sales ledgers with First-Expire-First-Out (FEFO) logics.
 
 ---
 
